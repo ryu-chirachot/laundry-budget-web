@@ -15,6 +15,8 @@ const fmt = d => new Intl.DateTimeFormat("th-TH", { day:"numeric", month:"short"
 
 function App() {
   const [startDate, setStartDate] = useState("2026-11-07");
+  const [mode, setMode] = useState("interval"); // "interval" = every N days, "weekly" = fixed weekdays
+  const [intervalDays, setIntervalDays] = useState(3); // Sat -> Tue -> Fri -> ...
   const [days, setDays] = useState([2,6]); // Tue + Sat
   const [people, setPeople] = useState(2);
   const [washPrice, setWashPrice] = useState(30);
@@ -28,13 +30,18 @@ function App() {
     const start = parseDate(startDate);
     const end = new Date(start.getFullYear(), start.getMonth()+monthsToShow, 0, 12);
     const dates = [];
+    if (mode === "interval") {
+      const step = Math.max(1, Number(intervalDays) || 1);
+      for (let d = new Date(start); d <= end; d = addDays(d,step)) dates.push(new Date(d));
+      return dates;
+    }
     for (let d = new Date(start); d <= end; d = addDays(d,1)) {
       if (days.includes(d.getDay())) dates.push(new Date(d));
     }
     // Always include the selected start date as the first laundry session.
     if (!dates.some(d => iso(d) === iso(start))) dates.unshift(start);
     return dates.sort((a,b) => a-b);
-  }, [startDate, days, monthsToShow]);
+  }, [startDate, days, monthsToShow, mode, intervalDays]);
 
   const monthRows = useMemo(() => {
     const start = parseDate(startDate);
@@ -51,6 +58,8 @@ function App() {
   const nextDates = schedule.slice(0,8);
   const totalSessions = monthRows.reduce((s,m)=>s+m.count,0);
   const totalCost = totalSessions*perSession;
+  const sessionsPerWeek = mode === "interval" ? 7 / Math.max(1, Number(intervalDays) || 1) : days.length;
+  const avgPerMonth = sessionsPerWeek * 365.25 / 12 / 7 * perSession;
   const toggleDay = day => setDays(old => old.includes(day) ? old.filter(x=>x!==day) : [...old,day].sort((a,b)=>a-b));
 
   return <main className="page">
@@ -69,9 +78,16 @@ function App() {
         <label>ค่าซักต่อครั้ง (บาท)<input type="number" min="0" value={washPrice} onChange={e=>setWashPrice(e.target.value)}/></label>
         <label>ค่าอบต่อครั้ง (บาท)<input type="number" min="0" value={dryPrice} onChange={e=>setDryPrice(e.target.value)}/></label>
       </div>
-      <div className="dayPicker"><strong>เลือกวันซักประจำสัปดาห์</strong><div className="days">
+      <div className="dayPicker"><strong>รูปแบบการซัก</strong><div className="days">
+        <button className={mode==="interval"?"day active":"day"} onClick={()=>setMode("interval")}>ซักทุก ๆ N วัน</button>
+        <button className={mode==="weekly"?"day active":"day"} onClick={()=>setMode("weekly")}>วันประจำสัปดาห์</button>
+      </div></div>
+      {mode === "interval" ? <div className="dayPicker">
+        <label className="monthSelect">ซักทุก ๆ (วัน)<input type="number" min="1" max="30" value={intervalDays} onChange={e=>setIntervalDays(Math.max(1,Number(e.target.value)||1))}/></label>
+        <small>เช่น 3 วัน: เสาร์ → อังคาร → ศุกร์ → จันทร์ … นับต่อจากวันที่เริ่มต้นไปเรื่อย ๆ วันซักจึงเลื่อนไปทุกสัปดาห์</small>
+      </div> : <div className="dayPicker"><strong>เลือกวันซักประจำสัปดาห์</strong><div className="days">
         {THAI_DAYS.map((d,i)=><button key={d} className={days.includes(i)?"day active":"day"} onClick={()=>toggleDay(i)}>{d}</button>)}
-      </div><small>ค่าเริ่มต้นคือวันอังคารและวันเสาร์ โดยวันที่เริ่มต้นจะถูกนับเป็นรอบแรกเสมอ</small></div>
+      </div><small>ค่าเริ่มต้นคือวันอังคารและวันเสาร์ โดยวันที่เริ่มต้นจะถูกนับเป็นรอบแรกเสมอ</small></div>}
       <label className="monthSelect">แสดงล่วงหน้า
         <select value={monthsToShow} onChange={e=>setMonthsToShow(Number(e.target.value))}>
           {[3,6,12,18,24].map(n=><option value={n} key={n}>{n} เดือน</option>)}
@@ -81,7 +97,7 @@ function App() {
 
     <section className="stats">
       <article className="stat"><div className="statIcon"><WashingMachine/></div><div><small>ค่าซัก + ค่าอบ / รอบ</small><strong>฿{money(perSession)}</strong><span>฿{money(perPersonSession)} ต่อคน</span></div></article>
-      <article className="stat"><div className="statIcon"><Wallet/></div><div><small>ค่าใช้จ่าย / สัปดาห์</small><strong>฿{money(perSession*2)}</strong><span>฿{money(perPersonSession*2)} ต่อคน (2 รอบ)</span></div></article>
+      <article className="stat"><div className="statIcon"><Wallet/></div><div><small>เฉลี่ย / เดือน</small><strong>฿{money(avgPerMonth)}</strong><span>฿{money(people ? avgPerMonth/people : 0)} ต่อคน · {mode==="interval" ? `ซักทุก ${intervalDays} วัน` : `${days.length} รอบ/สัปดาห์`}</span></div></article>
       <article className="stat"><div className="statIcon"><Users/></div><div><small>ประมาณการรวม {monthsToShow} เดือน</small><strong>฿{money(totalCost)}</strong><span>฿{money(people ? totalCost/people : 0)} ต่อคน</span></div></article>
     </section>
 
